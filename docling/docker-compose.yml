@@ -1,0 +1,60 @@
+services:
+  docling-serve:
+    image: quay.io/docling-project/docling-serve:${IMAGE_TAG}
+    container_name: docling-serve
+    restart: unless-stopped
+    # 核心优化：防止 AI 推理崩溃
+    shm_size: '2gb'
+    init: true
+    ports:
+      - "${HOST_PORT}:5001"
+    environment:
+      - DOCLING_SERVE_OCR_ENGINE=${DOCLING_SERVE_OCR_ENGINE:-easyocr}
+      - DOCLING_SERVE_HOST=0.0.0.0
+      - DOCLING_SERVE_PORT=5001
+      - OMP_NUM_THREADS=${CPU_LIMIT}
+    volumes:
+      - ${UPLOAD_DIR}:/uploads
+      - ${LOG_DIR}:/var/log/docling
+      - ${MODEL_CACHE}:/root/.cache
+
+    # 👇 关键：加入 Dify 的网络，并设置别名
+    networks:
+      dify_net:
+        aliases:
+          - docling  # ← 这样 Dify 就能用 http://docling:5001 访问
+
+    # 资源管理与 GPU 调度
+    deploy:
+      resources:
+        limits:
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-all} # 如果设置为 0，则不会请求 GPU
+              capabilities: [gpu]
+    # 健康检查：确保 OCR 模型加载完成后服务才标记为健康
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${HOST_PORT}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    # 生产级安全与性能优化
+    ulimits:
+      memlock: -1
+      stack: 67108864
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
+
+# 👇 定义外部网络
+networks:
+  dify_net:
+    external: true
+    name: docker_default  # ← 必须和你查到的网络名一致！

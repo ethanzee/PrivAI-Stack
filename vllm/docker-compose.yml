@@ -1,0 +1,59 @@
+services:
+  vllm-server:
+    image: vllm/vllm-openai:${IMAGE_TAG}
+    container_name: vllm-server
+    restart: unless-stopped
+    # 启用 NVIDIA Runtime
+    # runtime: nvidia
+    
+    # 共享内存配置，PyTorch 分布式推理必须开启 host 模式
+    ipc: host
+    
+    # 环境变量映射
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN}
+    
+    # 端口映射
+    ports:
+      - "${PORT}:8000"
+    
+    # 挂载卷
+    volumes:
+      - /home/ethan/llm_models/modelscope:/app/model
+    
+
+    # 👇 关键：加入 Dify 的网络，并设置别名
+    networks:
+      dify_net:
+        aliases:
+          - vllm  # ← 这样 Dify 就能用 http://vllm:8000 访问
+
+    # 资源管理与 GPU 调度
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all  # 使用宿主机所有可见 GPU
+              capabilities: [gpu]
+
+
+
+    # 启动命令
+    command: >
+      --model /app/model/${MODEL_PATH}
+      --tensor-parallel-size ${TP_SIZE}
+      --max-model-len ${MAX_MODEL_LEN}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION}
+      --dtype ${DTYPE}
+      --trust-remote-code
+      --served-model-name ${MODEL_NAME}
+      # 注意：--served-model-name 设置为 gpt-3.5-turbo 是为了欺骗一些
+      # 只认 OpenAI 模型名的旧客户端软件，你也可以改成 ${MODEL_NAME}
+
+
+# 👇 定义外部网络
+networks:
+  dify_net:
+    external: true
+    name: docker_default  # ← 必须和你查到的网络名一致！

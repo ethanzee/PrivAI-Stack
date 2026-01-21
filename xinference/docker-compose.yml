@@ -1,0 +1,51 @@
+services:
+  xinference:
+    image: xprobe/xinference:${IMAGE_TAG}
+    container_name: xinference
+    restart: unless-stopped
+    
+    # 端口映射
+    ports:
+      - "${PORT}:9997"
+    
+    # 环境变量
+    environment:
+      - XINFERENCE_HOME=/data
+      - XINFERENCE_MODEL_SRC=modelscope
+      # 如果你需要 HuggingFace 镜像加速，可以解开下面注释
+      # - HF_ENDPOINT=https://hf-mirror.com
+    
+    # 挂载卷
+    volumes:
+      # 1. 挂载数据目录，持久化保存 Xinference 的运行状态
+      - ./xinference-data:/data
+      
+      # 2. 挂载宿主机模型目录，方便直接加载本地模型
+      # 容器内路径为 /model
+      - ${MODEL_DIR}:/model
+
+    # 关键：加入 Dify 的网络
+    networks:
+      dify_net:
+        aliases:
+          - xinference
+
+    # 资源限制
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # 启动命令
+    # xinference-local 是单机启动模式
+    # -H 0.0.0.0 允许外部访问
+    command: xinference-local -H 0.0.0.0
+
+# 使用已存在的 Dify 网络
+networks:
+  dify_net:
+    external: true
+    name: docker_default  # 保持和你 vLLM 配置里查到的一致
