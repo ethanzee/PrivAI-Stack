@@ -1,4 +1,13 @@
 services:
+  init-permissions:
+    image: busybox:latest
+    user: root
+    volumes:
+      - ${MODEL_CACHE}:/mnt/model_cache
+    command: >
+      sh -c "mkdir -p /mnt/model_cache && 
+             chown -R 1001:1001 /mnt/model_cache && 
+             chmod -R 775 /mnt/model_cache"
   docling-serve:
     image: quay.io/docling-project/docling-serve:${IMAGE_TAG}
     container_name: docling-serve
@@ -13,16 +22,24 @@ services:
       - DOCLING_SERVE_HOST=0.0.0.0
       - DOCLING_SERVE_PORT=5001
       - OMP_NUM_THREADS=${CPU_LIMIT}
+
+      # 👇 新增：强制开启公式识别和 OCR
+      - DOCLING_SERVE_DO_FORMULA_ENRICHMENT=true
+      - DOCLING_SERVE_DO_OCR=true
+
+      # 2. 关键：覆盖镜像默认的资产路径，设置为空字符串，强制它从网上下载
+      - DOCLING_SERVE_ARTIFACTS_PATH=
+
     volumes:
-      - ${UPLOAD_DIR}:/uploads
-      - ${LOG_DIR}:/var/log/docling
-      - ${MODEL_CACHE}:/root/.cache
+      - ${MODEL_CACHE}:/opt/app-root/src/.cache
+
 
     # 👇 关键：加入 Dify 的网络，并设置别名
     networks:
       dify_net:
         aliases:
           - docling  # ← 这样 Dify 就能用 http://docling:5001 访问
+    
 
     # 资源管理与 GPU 调度
     deploy:
@@ -40,7 +57,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
     # 生产级安全与性能优化
     ulimits:
